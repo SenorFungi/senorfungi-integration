@@ -1,7 +1,12 @@
 {
   "domain": "senorfungi",
   "name": "SenorFungi",
-  "codeowners": ["@SenorFungi"],
+  "categories": [
+    "helpers"
+  ],
+  "codeowners": [
+    "@SenorFungi"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/SenorFungi/senorfungi-integration",
