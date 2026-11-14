@@ -2,17 +2,81 @@
   "config": {
     "step": {
       "user": {
-        "description": "Die SenorFungi-Integration einrichten."
+        "description": "SenorFungi einrichten. Funktionen werden in den Optionen (Konfigurieren) eingeschaltet."
       }
     },
     "abort": {
       "single_instance_allowed": "Bereits eingerichtet. Es ist nur eine Konfiguration möglich."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EMS-Bus-Logger: Verbindung",
+        "description": "Schreibt EMS-Telegramme eines EMS-ESP-Gateways in tägliche Dateien. Liest die `watch`-Ausgabe der Telnet-Konsole von EMS-ESP und sendet nichts auf den EMS-Bus.",
+        "data": {
+          "ems_enabled": "EMS-Bus-Logger einschalten",
+          "ems_host": "EMS-ESP-Host",
+          "ems_port": "Telnet-Port"
+        },
+        "data_description": {
+          "ems_host": "IP-Adresse oder Hostname des EMS-ESP-Gateways.",
+          "ems_port": "Telnet muss in EMS-ESP eingeschaltet sein (Einstellungen → Dienste). Standard 23."
+        }
+      },
+      "logger": {
+        "title": "EMS-Bus-Logger: was und wohin",
+        "description": "EMS-ESP meldet {devices} Geräte; sie stehen in den ID-Feldern zur Auswahl. Andere Hex-IDs können eingetippt werden.",
+        "data": {
+          "ems_filter_ids": "Filter: Geräte",
+          "ems_ignore_ids": "Ignorieren: Geräte",
+          "ems_pair_src": "Paar: Absender",
+          "ems_pair_dst": "Paar: Empfänger",
+          "ems_log_dir": "Log-Ordner",
+          "ems_retention_days": "Logdateien aufbewahren",
+          "ems_compress_after_days": "Komprimieren nach"
+        },
+        "data_description": {
+          "ems_filter_ids": "Nur Telegramme von oder an diese Geräte behalten. Leer: der ganze Bus. Bei einer ID filtert EMS-ESP selbst, bei mehreren wird der ganze Bus beobachtet und hier gefiltert.",
+          "ems_ignore_ids": "Telegramme von oder an diese Geräte verwerfen, zum Beispiel das EMS-ESP-Gateway selbst, um seine eigenen Abfragen wegzulassen.",
+          "ems_pair_src": "Legt Sensoren für die Telegramme von diesem Gerät an den Empfänger an, zum Beispiel Thermostat an Kessel. Beide leer lassen für keine.",
+          "ems_pair_dst": "Empfänger des Paars.",
+          "ems_log_dir": "Absoluter Pfad; eine Datei pro Tag. Unter Home Assistant OS liegt ein Ordner in /share außerhalb von /config und kann von Backups ausgenommen werden.",
+          "ems_retention_days": "Tage; ältere Dateien werden gelöscht.",
+          "ems_compress_after_days": "Die Datei eines Tages mit gzip packen, sobald sie so viele Tage alt ist (1 = die Datei von gestern). 0: nie."
+        }
+      }
+    },
+    "error": {
+      "invalid_hex": "Hex-IDs wie 08 oder 0x08 eingeben.",
+      "host_required": "Den EMS-ESP-Host eingeben, um den Logger einzuschalten.",
+      "pair_incomplete": "Beide Paar-Geräte eingeben oder beide leer lassen.",
+      "cannot_connect": "Die EMS-ESP-Konsole ist nicht erreichbar (Host und Telnet-Port prüfen, Telnet muss in EMS-ESP eingeschaltet sein).",
+      "dir_not_absolute": "Einen absoluten Pfad eingeben.",
+      "dir_not_writable": "Dieser Ordner kann nicht angelegt oder beschrieben werden."
+    }
+  },
   "entity": {
+    "binary_sensor": {
+      "ems_connected": {
+        "name": "Konsole verbunden"
+      }
+    },
     "sensor": {
       "version": {
         "name": "Version"
+      },
+      "ems_last_telegram": {
+        "name": "Letztes Telegramm"
+      },
+      "ems_rate": {
+        "name": "Telegramme pro Minute"
+      },
+      "ems_pair_last": {
+        "name": "Letztes Telegramm {src} an {dst}"
+      },
+      "ems_pair_interval": {
+        "name": "Intervall {src} an {dst}"
       }
     }
   }
