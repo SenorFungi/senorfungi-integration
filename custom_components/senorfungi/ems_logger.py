@@ -82,6 +82,7 @@ class EmsBusLogger:
         self._buffer: list[str] = []
         self._recent: deque[datetime] = deque()
         self._listeners: list[Callable[[], None]] = []
+        self._telegram_listeners: list[Callable[[Telegram], None]] = []
         self._unsubs: list[CALLBACK_TYPE] = []
 
     @callback
@@ -91,6 +92,16 @@ class EmsBusLogger:
 
         def remove() -> None:
             self._listeners.remove(update)
+
+        return remove
+
+    @callback
+    def async_add_telegram_listener(self, on_telegram: Callable[[Telegram], None]) -> CALLBACK_TYPE:
+        """Register a callback for every telegram that passes the filters."""
+        self._telegram_listeners.append(on_telegram)
+
+        def remove() -> None:
+            self._telegram_listeners.remove(on_telegram)
 
         return remove
 
@@ -128,6 +139,8 @@ class EmsBusLogger:
         stats.last_telegram = telegram.time
         self._recent.append(telegram.time)
         self._buffer.append(f"{telegram.time.isoformat(timespec='milliseconds')} {telegram.line}\n")
+        for on_telegram in list(self._telegram_listeners):
+            on_telegram(telegram)
         pair = stats.pair
         if pair and telegram.src == pair.src and telegram.dst == pair.dst:
             prev = pair.last_by_type.get(telegram.type_id)

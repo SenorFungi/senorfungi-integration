@@ -64,6 +64,23 @@ class Telegram:
     line: str  # the decoded text as EMS-ESP printed it
 
     @property
+    def offset(self) -> int:
+        """Offset of the payload (EMS+ partial telegrams), 0 if none."""
+        m = re.search(r" \(offset (\d+)\)$", self.rest)
+        return int(m.group(1)) if m else 0
+
+    @property
+    def data_bytes(self) -> list[int]:
+        """Payload as numbers."""
+        data = self.data
+        if not data or data == "<empty>":
+            return []
+        try:
+            return [int(b, 16) for b in data.split()]
+        except ValueError:
+            return []
+
+    @property
     def data(self) -> str:
         """Payload bytes as hex text, without the offset suffix."""
         if not self.rest.startswith("data: "):

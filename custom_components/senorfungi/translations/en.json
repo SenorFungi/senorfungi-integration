@@ -60,6 +60,12 @@
     "binary_sensor": {
       "ems_connected": {
         "name": "Console connected"
+      },
+      "heating_heat_request": {
+        "name": "Heat request"
+      },
+      "heating_thermostat_present": {
+        "name": "Thermostat on the bus"
       }
     },
     "sensor": {
@@ -77,6 +83,180 @@
       },
       "ems_pair_interval": {
         "name": "Interval {src} to {dst}"
+      },
+      "heating_flow_target": {
+        "name": "Flow target"
+      },
+      "heating_reason": {
+        "name": "Reason",
+        "state": {
+          "no_outdoor": "No outdoor temperature",
+          "no_zones": "No usable zone",
+          "summer": "Summer",
+          "satisfied": "All zones warm enough",
+          "blocked": "Blocked by a zone without valve",
+          "min_off": "Minimum pause",
+          "min_on": "Minimum heating time",
+          "heating": "Heating",
+          "boost": "Boost",
+          "frost": "Frost protection"
+        }
+      },
+      "heating_thermostat_flow": {
+        "name": "Thermostat flow request"
+      }
+    },
+    "climate": {
+      "heating_zone": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "comfort": "Comfort",
+              "eco": "Eco"
+            }
+          }
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "heating_controller": {
+      "entry_type": "Heating controller",
+      "initiate_flow": {
+        "user": "Add heating controller",
+        "reconfigure": "Change heating controller"
+      },
+      "step": {
+        "user": {
+          "title": "Add heating controller",
+          "description": "Computes the flow temperature a boiler should be asked for, from a heating curve and the demand of the zones. **Shadow mode: it only computes and shows the value and sends nothing to the boiler.**",
+          "data": {
+            "outdoor_entity": "Outdoor temperature",
+            "thermostat_id": "Bus thermostat",
+            "presence_timeout": "Thermostat presence timeout",
+            "design_outdoor": "Design outdoor temperature",
+            "design_flow": "Design flow temperature",
+            "min_flow": "Minimum flow temperature",
+            "max_flow": "Maximum flow temperature",
+            "room_gain": "Room correction",
+            "summer_limit": "Summer limit",
+            "boost_offset": "Boost offset",
+            "min_on_minutes": "Minimum heating time",
+            "min_off_minutes": "Minimum pause"
+          },
+          "data_description": {
+            "outdoor_entity": "Any temperature sensor outdoors (or a weather-based sensor).",
+            "thermostat_id": "EMS ID of the thermostat that controls the boiler now, to compare its requests and see whether it is on the bus. Needs the EMS bus logger, and the ID must pass its filter. Empty: no comparison.",
+            "presence_timeout": "The thermostat counts as present if it sent a telegram within this time.",
+            "design_outdoor": "Heating curve: the coldest outdoor temperature it is designed for.",
+            "design_flow": "Heating curve: flow temperature at the design outdoor temperature and a 20 °C room.",
+            "min_flow": "Lowest flow temperature asked for while heating.",
+            "max_flow": "Highest flow temperature ever asked for.",
+            "room_gain": "Extra flow temperature per kelvin the neediest zone is below its target.",
+            "summer_limit": "No heating at or above this outdoor temperature (frost protection still works).",
+            "boost_offset": "Added to the flow temperature while a zone is 1 K or more below its target, for a faster heat-up.",
+            "min_on_minutes": "Keep heating at least this long once started.",
+            "min_off_minutes": "Wait at least this long before heating again."
+          }
+        },
+        "reconfigure": {
+          "title": "Change heating controller",
+          "description": "Computes the flow temperature a boiler should be asked for, from a heating curve and the demand of the zones. **Shadow mode: it only computes and shows the value and sends nothing to the boiler.**",
+          "data": {
+            "outdoor_entity": "Outdoor temperature",
+            "thermostat_id": "Bus thermostat",
+            "presence_timeout": "Thermostat presence timeout",
+            "design_outdoor": "Design outdoor temperature",
+            "design_flow": "Design flow temperature",
+            "min_flow": "Minimum flow temperature",
+            "max_flow": "Maximum flow temperature",
+            "room_gain": "Room correction",
+            "summer_limit": "Summer limit",
+            "boost_offset": "Boost offset",
+            "min_on_minutes": "Minimum heating time",
+            "min_off_minutes": "Minimum pause"
+          },
+          "data_description": {
+            "outdoor_entity": "Any temperature sensor outdoors (or a weather-based sensor).",
+            "thermostat_id": "EMS ID of the thermostat that controls the boiler now, to compare its requests and see whether it is on the bus. Needs the EMS bus logger, and the ID must pass its filter. Empty: no comparison.",
+            "presence_timeout": "The thermostat counts as present if it sent a telegram within this time.",
+            "design_outdoor": "Heating curve: the coldest outdoor temperature it is designed for.",
+            "design_flow": "Heating curve: flow temperature at the design outdoor temperature and a 20 °C room.",
+            "min_flow": "Lowest flow temperature asked for while heating.",
+            "max_flow": "Highest flow temperature ever asked for.",
+            "room_gain": "Extra flow temperature per kelvin the neediest zone is below its target.",
+            "summer_limit": "No heating at or above this outdoor temperature (frost protection still works).",
+            "boost_offset": "Added to the flow temperature while a zone is 1 K or more below its target, for a faster heat-up.",
+            "min_on_minutes": "Keep heating at least this long once started.",
+            "min_off_minutes": "Wait at least this long before heating again."
+          }
+        }
+      },
+      "error": {
+        "invalid_hex": "Enter a hex ID such as 18 or 0x18.",
+        "max_below_min": "The maximum must be above the minimum."
+      },
+      "abort": {
+        "controller_exists": "A heating controller already exists; change it instead."
+      }
+    },
+    "heating_zone": {
+      "entry_type": "Heating zone",
+      "initiate_flow": {
+        "user": "Add heating zone",
+        "reconfigure": "Change heating zone"
+      },
+      "step": {
+        "user": {
+          "title": "Add heating zone",
+          "description": "A room the controller looks after. Give it a climate entity, or a temperature sensor (then the integration creates a climate entity for the room's target).",
+          "data": {
+            "name": "Name",
+            "climate_entity": "Climate entity",
+            "temperature_entity": "Temperature sensor",
+            "valve_entity": "Valve position sensor",
+            "has_valve": "Radiators have a controllable valve",
+            "weight": "Weight",
+            "comfort_temperature": "Comfort temperature",
+            "eco_temperature": "Eco temperature"
+          },
+          "data_description": {
+            "climate_entity": "A thermostat of the room (for example a radiator thermostat). Its current temperature and target are used. Leave empty to get a climate entity from this integration for the room.",
+            "temperature_entity": "Room temperature. Overrides the climate entity's temperature if both are set. Required without a climate entity.",
+            "valve_entity": "Optional, shown for comparison only (for now).",
+            "has_valve": "Off for radiators that are always open: the room then stops the heating when it gets too warm.",
+            "weight": "Multiplies the room's demand. 1 = normal, 0 = ignore the room.",
+            "comfort_temperature": "Target of the comfort preset (only for the integration's own climate entity).",
+            "eco_temperature": "Target of the eco preset (only for the integration's own climate entity)."
+          }
+        },
+        "reconfigure": {
+          "title": "Change heating zone",
+          "description": "A room the controller looks after. Give it a climate entity, or a temperature sensor (then the integration creates a climate entity for the room's target).",
+          "data": {
+            "name": "Name",
+            "climate_entity": "Climate entity",
+            "temperature_entity": "Temperature sensor",
+            "valve_entity": "Valve position sensor",
+            "has_valve": "Radiators have a controllable valve",
+            "weight": "Weight",
+            "comfort_temperature": "Comfort temperature",
+            "eco_temperature": "Eco temperature"
+          },
+          "data_description": {
+            "climate_entity": "A thermostat of the room (for example a radiator thermostat). Its current temperature and target are used. Leave empty to get a climate entity from this integration for the room.",
+            "temperature_entity": "Room temperature. Overrides the climate entity's temperature if both are set. Required without a climate entity.",
+            "valve_entity": "Optional, shown for comparison only (for now).",
+            "has_valve": "Off for radiators that are always open: the room then stops the heating when it gets too warm.",
+            "weight": "Multiplies the room's demand. 1 = normal, 0 = ignore the room.",
+            "comfort_temperature": "Target of the comfort preset (only for the integration's own climate entity).",
+            "eco_temperature": "Target of the eco preset (only for the integration's own climate entity)."
+          }
+        }
+      },
+      "error": {
+        "name_required": "Enter a name.",
+        "zone_needs_source": "Choose a climate entity or a temperature sensor."
       }
     }
   }

@@ -60,6 +60,12 @@
     "binary_sensor": {
       "ems_connected": {
         "name": "Konsole verbunden"
+      },
+      "heating_heat_request": {
+        "name": "Wärmeanforderung"
+      },
+      "heating_thermostat_present": {
+        "name": "Thermostat am Bus"
       }
     },
     "sensor": {
@@ -77,6 +83,180 @@
       },
       "ems_pair_interval": {
         "name": "Intervall {src} an {dst}"
+      },
+      "heating_flow_target": {
+        "name": "Vorlauf-Sollwert"
+      },
+      "heating_reason": {
+        "name": "Grund",
+        "state": {
+          "no_outdoor": "Keine Außentemperatur",
+          "no_zones": "Keine nutzbare Zone",
+          "summer": "Sommer",
+          "satisfied": "Alle Zonen warm genug",
+          "blocked": "Gesperrt durch Zone ohne Ventil",
+          "min_off": "Mindestpause",
+          "min_on": "Mindest-Heizdauer",
+          "heating": "Heizen",
+          "boost": "Boost",
+          "frost": "Frostschutz"
+        }
+      },
+      "heating_thermostat_flow": {
+        "name": "Vorlaufanforderung des Thermostats"
+      }
+    },
+    "climate": {
+      "heating_zone": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "comfort": "Komfort",
+              "eco": "Sparen"
+            }
+          }
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "heating_controller": {
+      "entry_type": "Heizungsregler",
+      "initiate_flow": {
+        "user": "Heizungsregler hinzufügen",
+        "reconfigure": "Heizungsregler ändern"
+      },
+      "step": {
+        "user": {
+          "title": "Heizungsregler hinzufügen",
+          "description": "Berechnet die Vorlauftemperatur, die beim Kessel angefordert werden sollte, aus einer Heizkurve und dem Wärmebedarf der Zonen. **Schattenbetrieb: Er berechnet und zeigt den Wert nur an und sendet nichts an den Kessel.**",
+          "data": {
+            "outdoor_entity": "Außentemperatur",
+            "thermostat_id": "Bus-Thermostat",
+            "presence_timeout": "Anwesenheit des Thermostats",
+            "design_outdoor": "Auslegungs-Außentemperatur",
+            "design_flow": "Auslegungs-Vorlauftemperatur",
+            "min_flow": "Minimale Vorlauftemperatur",
+            "max_flow": "Maximale Vorlauftemperatur",
+            "room_gain": "Raumkorrektur",
+            "summer_limit": "Sommergrenze",
+            "boost_offset": "Boost-Aufschlag",
+            "min_on_minutes": "Mindest-Heizdauer",
+            "min_off_minutes": "Mindestpause"
+          },
+          "data_description": {
+            "outdoor_entity": "Ein beliebiger Temperatursensor draußen (oder ein wetterbasierter Sensor).",
+            "thermostat_id": "EMS-ID des Thermostats, das den Kessel jetzt steuert, um seine Anforderungen zu vergleichen und zu sehen, ob es am Bus ist. Braucht den EMS-Bus-Logger, und die ID muss durch dessen Filter kommen. Leer: kein Vergleich.",
+            "presence_timeout": "Das Thermostat gilt als anwesend, wenn es innerhalb dieser Zeit ein Telegramm gesendet hat.",
+            "design_outdoor": "Heizkurve: die kälteste Außentemperatur, für die sie ausgelegt ist.",
+            "design_flow": "Heizkurve: Vorlauftemperatur bei der Auslegungs-Außentemperatur und 20 °C Raumtemperatur.",
+            "min_flow": "Niedrigste Vorlauftemperatur, die beim Heizen angefordert wird.",
+            "max_flow": "Höchste Vorlauftemperatur, die je angefordert wird.",
+            "room_gain": "Zusätzliche Vorlauftemperatur je Kelvin, die die bedürftigste Zone unter ihrem Sollwert liegt.",
+            "summer_limit": "Ab dieser Außentemperatur wird nicht geheizt (Frostschutz bleibt aktiv).",
+            "boost_offset": "Wird auf die Vorlauftemperatur aufgeschlagen, solange eine Zone 1 K oder mehr unter ihrem Sollwert liegt, für ein schnelleres Aufheizen.",
+            "min_on_minutes": "Nach dem Start mindestens so lange heizen.",
+            "min_off_minutes": "Mindestens so lange warten, bevor wieder geheizt wird."
+          }
+        },
+        "reconfigure": {
+          "title": "Heizungsregler ändern",
+          "description": "Berechnet die Vorlauftemperatur, die beim Kessel angefordert werden sollte, aus einer Heizkurve und dem Wärmebedarf der Zonen. **Schattenbetrieb: Er berechnet und zeigt den Wert nur an und sendet nichts an den Kessel.**",
+          "data": {
+            "outdoor_entity": "Außentemperatur",
+            "thermostat_id": "Bus-Thermostat",
+            "presence_timeout": "Anwesenheit des Thermostats",
+            "design_outdoor": "Auslegungs-Außentemperatur",
+            "design_flow": "Auslegungs-Vorlauftemperatur",
+            "min_flow": "Minimale Vorlauftemperatur",
+            "max_flow": "Maximale Vorlauftemperatur",
+            "room_gain": "Raumkorrektur",
+            "summer_limit": "Sommergrenze",
+            "boost_offset": "Boost-Aufschlag",
+            "min_on_minutes": "Mindest-Heizdauer",
+            "min_off_minutes": "Mindestpause"
+          },
+          "data_description": {
+            "outdoor_entity": "Ein beliebiger Temperatursensor draußen (oder ein wetterbasierter Sensor).",
+            "thermostat_id": "EMS-ID des Thermostats, das den Kessel jetzt steuert, um seine Anforderungen zu vergleichen und zu sehen, ob es am Bus ist. Braucht den EMS-Bus-Logger, und die ID muss durch dessen Filter kommen. Leer: kein Vergleich.",
+            "presence_timeout": "Das Thermostat gilt als anwesend, wenn es innerhalb dieser Zeit ein Telegramm gesendet hat.",
+            "design_outdoor": "Heizkurve: die kälteste Außentemperatur, für die sie ausgelegt ist.",
+            "design_flow": "Heizkurve: Vorlauftemperatur bei der Auslegungs-Außentemperatur und 20 °C Raumtemperatur.",
+            "min_flow": "Niedrigste Vorlauftemperatur, die beim Heizen angefordert wird.",
+            "max_flow": "Höchste Vorlauftemperatur, die je angefordert wird.",
+            "room_gain": "Zusätzliche Vorlauftemperatur je Kelvin, die die bedürftigste Zone unter ihrem Sollwert liegt.",
+            "summer_limit": "Ab dieser Außentemperatur wird nicht geheizt (Frostschutz bleibt aktiv).",
+            "boost_offset": "Wird auf die Vorlauftemperatur aufgeschlagen, solange eine Zone 1 K oder mehr unter ihrem Sollwert liegt, für ein schnelleres Aufheizen.",
+            "min_on_minutes": "Nach dem Start mindestens so lange heizen.",
+            "min_off_minutes": "Mindestens so lange warten, bevor wieder geheizt wird."
+          }
+        }
+      },
+      "error": {
+        "invalid_hex": "Gib eine Hex-ID wie 18 oder 0x18 ein.",
+        "max_below_min": "Das Maximum muss über dem Minimum liegen."
+      },
+      "abort": {
+        "controller_exists": "Es gibt bereits einen Heizungsregler; ändere stattdessen diesen."
+      }
+    },
+    "heating_zone": {
+      "entry_type": "Heizzone",
+      "initiate_flow": {
+        "user": "Heizzone hinzufügen",
+        "reconfigure": "Heizzone ändern"
+      },
+      "step": {
+        "user": {
+          "title": "Heizzone hinzufügen",
+          "description": "Ein Raum, um den sich der Regler kümmert. Gib ihm eine Klima-Entität oder einen Temperatursensor (dann legt die Integration eine Klima-Entität für den Sollwert des Raums an).",
+          "data": {
+            "name": "Name",
+            "climate_entity": "Klima-Entität",
+            "temperature_entity": "Temperatursensor",
+            "valve_entity": "Sensor Ventilöffnung",
+            "has_valve": "Heizkörper haben ein regelbares Ventil",
+            "weight": "Gewichtung",
+            "comfort_temperature": "Komforttemperatur",
+            "eco_temperature": "Spartemperatur"
+          },
+          "data_description": {
+            "climate_entity": "Ein Thermostat des Raums (zum Beispiel ein Heizkörperthermostat). Seine Ist- und Solltemperatur werden verwendet. Leer lassen, dann legt die Integration eine Klima-Entität für den Raum an.",
+            "temperature_entity": "Raumtemperatur. Ersetzt die Temperatur der Klima-Entität, wenn beides gesetzt ist. Ohne Klima-Entität erforderlich.",
+            "valve_entity": "Optional, wird (vorerst) nur zum Vergleich angezeigt.",
+            "has_valve": "Aus bei Heizkörpern, die immer offen sind: Der Raum stoppt dann die Heizung, wenn er zu warm wird.",
+            "weight": "Multipliziert den Wärmebedarf des Raums. 1 = normal, 0 = Raum ignorieren.",
+            "comfort_temperature": "Sollwert der Komfort-Voreinstellung (nur für die eigene Klima-Entität der Integration).",
+            "eco_temperature": "Sollwert der Spar-Voreinstellung (nur für die eigene Klima-Entität der Integration)."
+          }
+        },
+        "reconfigure": {
+          "title": "Heizzone ändern",
+          "description": "Ein Raum, um den sich der Regler kümmert. Gib ihm eine Klima-Entität oder einen Temperatursensor (dann legt die Integration eine Klima-Entität für den Sollwert des Raums an).",
+          "data": {
+            "name": "Name",
+            "climate_entity": "Klima-Entität",
+            "temperature_entity": "Temperatursensor",
+            "valve_entity": "Sensor Ventilöffnung",
+            "has_valve": "Heizkörper haben ein regelbares Ventil",
+            "weight": "Gewichtung",
+            "comfort_temperature": "Komforttemperatur",
+            "eco_temperature": "Spartemperatur"
+          },
+          "data_description": {
+            "climate_entity": "Ein Thermostat des Raums (zum Beispiel ein Heizkörperthermostat). Seine Ist- und Solltemperatur werden verwendet. Leer lassen, dann legt die Integration eine Klima-Entität für den Raum an.",
+            "temperature_entity": "Raumtemperatur. Ersetzt die Temperatur der Klima-Entität, wenn beides gesetzt ist. Ohne Klima-Entität erforderlich.",
+            "valve_entity": "Optional, wird (vorerst) nur zum Vergleich angezeigt.",
+            "has_valve": "Aus bei Heizkörpern, die immer offen sind: Der Raum stoppt dann die Heizung, wenn er zu warm wird.",
+            "weight": "Multipliziert den Wärmebedarf des Raums. 1 = normal, 0 = Raum ignorieren.",
+            "comfort_temperature": "Sollwert der Komfort-Voreinstellung (nur für die eigene Klima-Entität der Integration).",
+            "eco_temperature": "Sollwert der Spar-Voreinstellung (nur für die eigene Klima-Entität der Integration)."
+          }
+        }
+      },
+      "error": {
+        "name_required": "Gib einen Namen ein.",
+        "zone_needs_source": "Wähle eine Klima-Entität oder einen Temperatursensor."
       }
     }
   }

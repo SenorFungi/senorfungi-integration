@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SenorFungiConfigEntry
-from .entity import EmsBusEntity
+from .entity import EmsBusEntity, HeatingEntity
 
 
 async def async_setup_entry(
@@ -22,6 +22,11 @@ async def async_setup_entry(
     """Set up the binary sensor platform."""
     if (ems := entry.runtime_data.ems) is not None:
         async_add_entities([EmsBusConnectedSensor(entry, ems, "connected")])
+    if (heating := entry.runtime_data.heating) is not None:
+        entities: list[BinarySensorEntity] = [HeatRequestSensor(entry, heating, "heat_request")]
+        if heating.watches_thermostat:
+            entities.append(ThermostatPresentSensor(entry, heating, "thermostat_present"))
+        async_add_entities(entities, config_subentry_id=heating.subentry_id)
 
 
 class EmsBusConnectedSensor(EmsBusEntity, BinarySensorEntity):
@@ -39,3 +44,34 @@ class EmsBusConnectedSensor(EmsBusEntity, BinarySensorEntity):
     def extra_state_attributes(self) -> dict[str, str]:
         """Show what is watched."""
         return {"watch": self.ems.client.watch_command}
+
+
+class HeatRequestSensor(HeatingEntity, BinarySensorEntity):
+    """Whether the controller would ask the boiler for heat (shadow mode: nothing is sent)."""
+
+    _attr_device_class = BinarySensorDeviceClass.HEAT
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true when the controller would heat."""
+        return None if self.heating.decision is None else self.heating.decision.heat
+
+
+class ThermostatPresentSensor(HeatingEntity, BinarySensorEntity):
+    """Whether the bus thermostat sent a telegram within the presence timeout."""
+
+    _attr_device_class = BinarySensorDeviceClass.PRESENCE
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true while the thermostat is on the bus."""
+        return self.heating.thermostat_present
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        """Address and last telegram."""
+        seen = self.heating.thermostat_seen
+        return {
+            "thermostat_id": f"0x{self.heating.thermostat_id:02X}" if self.heating.thermostat_id is not None else None,
+            "last_seen": seen.isoformat() if seen else None,
+        }

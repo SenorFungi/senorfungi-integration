@@ -42,7 +42,32 @@ Entities (device "EMS bus logger"):
 
 Log line example: `2026-11-14T14:45:37.567+01:00 thermostat(0x18) -> boiler(0x08), W, ?(0x02E0), data: 01 00 00 00 01`. File size depends on the system and the filter. As a guide, one thermostat with EMS-ESP's polling was about 0.5 telegrams per second (5–7 MB per day), a whole bus about 1–2 per second. Gzip shrinks finished days by about 90 %.
 
-The EMS-ESP console's text format is not an official interface, so a new EMS-ESP version could change it. The logger was written against EMS-ESP 3.7.1 (decoded `watch` output and `/api/system/info`).
+The EMS-ESP console's text format is not an official interface, so a new EMS-ESP version could change it. The logger reads the console formats of EMS-ESP 3.7 and 3.8 or later (decoded `watch` output and `/api/system/info`) and writes the same line format for both.
+
+## Heating controller (shadow mode)
+
+Computes the flow temperature a boiler should be asked for, from a heating curve and the demand of the rooms ("zones"). **For now it runs in shadow mode only: it computes and shows the value, and sends nothing to the boiler.** It is meant to be compared with the thermostat that controls the boiler today, before anything is switched over.
+
+- **Setup:** Settings → Devices & services → SenorFungi → add a *Heating controller* (one) and one *Heating zone* per room.
+- **Controller:** an outdoor temperature sensor, the heating curve (design outdoor temperature and design flow temperature for a 20 °C room), minimum and maximum flow temperature, room correction, summer limit, boost offset, minimum heating time and pause. Optional: the EMS ID of the bus thermostat that controls the boiler now. With the EMS bus logger running (and that ID passing its filter), the controller shows the thermostat's own flow request (`UBASetPoints`, EMS+ `0x02E0` or EMS 1 `0x1A`) and whether the thermostat is on the bus.
+- **Zones:** either an existing climate entity (its current temperature and target are used; a zone in mode `off` asks for nothing) or a temperature sensor, in which case the integration creates a climate entity for the room's target with the presets *comfort* and *eco*. Per zone: whether its radiators have a controllable valve, a weight for its demand, and an optional valve position sensor (shown only).
+
+How it decides, every 30 seconds:
+
+1. The neediest zone (largest `(target − temperature) × weight`) sets the demand.
+2. Heating starts when the demand reaches +0.2 K and stops when every zone is 0.2 K above its target, respecting the minimum heating time and pause.
+3. Flow = heating curve for the outdoor temperature (shifted by the neediest zone's target) + room correction × demand, plus the boost offset while the demand is 1 K or more, limited to the minimum and maximum flow temperature.
+4. No heating at or above the summer limit, or while a zone **without** a valve is 0.5 K or more above its target (its radiators can't close, so heating would overheat it). Any zone below 5 °C forces heating at the minimum flow temperature (frost protection).
+
+Entities (device "Heating controller", plus one climate entity per zone without its own):
+
+| Entity | Meaning |
+|---|---|
+| Flow target | Flow temperature the controller would ask for, 0 when it wouldn't heat. Attributes: reason, deciding zone, demand, curve value, outdoor temperature, per-zone values, `mode: shadow`. |
+| Reason | Why: heating, boost, satisfied, min. heating time, min. pause, blocked, summer, frost, no outdoor temperature, no usable zone. |
+| Heat request | Whether it would heat. |
+| Thermostat flow request | Flow the bus thermostat last requested (with the logger and a thermostat ID). |
+| Thermostat on the bus | Whether the bus thermostat sent a telegram within the presence timeout (default 150 s). |
 
 ## Development
 

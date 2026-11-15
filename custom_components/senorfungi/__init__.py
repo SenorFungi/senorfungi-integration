@@ -24,10 +24,13 @@ from .const import (
     DEFAULT_EMS_COMPRESS,
     DEFAULT_EMS_PORT,
     DEFAULT_EMS_RETENTION,
+    SUBENTRY_CONTROLLER,
+    SUBENTRY_ZONE,
 )
 from .ems_logger import EmsBusLogger
+from .heating import HeatingRuntime
 
-PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.CLIMATE, Platform.SENSOR]
 
 
 @dataclass(slots=True)
@@ -35,6 +38,7 @@ class SenorFungiData:
     """Runtime data of the config entry."""
 
     ems: EmsBusLogger | None = None
+    heating: HeatingRuntime | None = None
 
 
 type SenorFungiConfigEntry = ConfigEntry[SenorFungiData]
@@ -67,13 +71,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: SenorFungiConfigEntry) -
         data.ems = ems
         ems.async_start()
         entry.async_create_background_task(hass, ems.client.run(), "senorfungi_ems_bus")
+    if controllers := entry.get_subentries_of_type(SUBENTRY_CONTROLLER):
+        data.heating = HeatingRuntime(hass, controllers[0], entry.get_subentries_of_type(SUBENTRY_ZONE), data.ems)
     entry.runtime_data = data
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if data.heating is not None:
+        data.heating.async_start()
+        data.heating.async_update()
+    # options and subentries (controller, zones) changed: set up again
+    entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
+
+
+async def _async_reload(hass: HomeAssistant, entry: SenorFungiConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SenorFungiConfigEntry) -> bool:
     """Unload a config entry."""
+    if entry.runtime_data.heating is not None:
+        entry.runtime_data.heating.async_stop()
     if entry.runtime_data.ems is not None:
         await entry.runtime_data.ems.async_stop()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

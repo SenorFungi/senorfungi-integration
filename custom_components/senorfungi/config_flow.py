@@ -7,14 +7,20 @@ from pathlib import Path
 from typing import Any
 
 import probatio
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
-    OptionsFlowWithReload,
+    ConfigSubentryFlow,
+    OptionsFlow,
+    SubentryFlowResult,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.selector import (
+    BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -22,9 +28,13 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
 )
 
 from .const import (
+    CONF_BOOST_OFFSET,
+    CONF_DESIGN_FLOW,
+    CONF_DESIGN_OUTDOOR,
     CONF_EMS_COMPRESS,
     CONF_EMS_ENABLED,
     CONF_EMS_FILTER,
@@ -35,6 +45,24 @@ from .const import (
     CONF_EMS_PAIR_SRC,
     CONF_EMS_PORT,
     CONF_EMS_RETENTION,
+    CONF_MAX_FLOW,
+    CONF_MIN_FLOW,
+    CONF_MIN_OFF,
+    CONF_MIN_ON,
+    CONF_OUTDOOR_ENTITY,
+    CONF_PRESENCE_TIMEOUT,
+    CONF_ROOM_GAIN,
+    CONF_SUMMER_LIMIT,
+    CONF_THERMOSTAT_ID,
+    CONF_ZONE_CLIMATE,
+    CONF_ZONE_COMFORT,
+    CONF_ZONE_ECO,
+    CONF_ZONE_HAS_VALVE,
+    CONF_ZONE_NAME,
+    CONF_ZONE_TEMPERATURE,
+    CONF_ZONE_VALVE_ENTITY,
+    CONF_ZONE_WEIGHT,
+    CONTROLLER_DEFAULTS,
     DEFAULT_EMS_COMPRESS,
     DEFAULT_EMS_PORT,
     DEFAULT_EMS_RETENTION,
@@ -42,6 +70,9 @@ from .const import (
     EMS_BROADCAST_ID,
     EMS_LOG_SUBDIR,
     SHARE_DIR,
+    SUBENTRY_CONTROLLER,
+    SUBENTRY_ZONE,
+    ZONE_DEFAULTS,
 )
 from .ems_discovery import EmsDevice, async_discover
 
@@ -175,6 +206,12 @@ class SenorFungiConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(cls, config_entry: ConfigEntry) -> dict[str, type[ConfigSubentryFlow]]:
+        """Heating controller (one) and heating zones (any number)."""
+        return {SUBENTRY_CONTROLLER: ControllerSubentryFlow, SUBENTRY_ZONE: ZoneSubentryFlow}
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> SenorFungiOptionsFlow:
@@ -188,7 +225,7 @@ class SenorFungiConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="user")
 
 
-class SenorFungiOptionsFlow(OptionsFlowWithReload):
+class SenorFungiOptionsFlow(OptionsFlow):
     """Options: the EMS bus logger. Step 1 connection, step 2 logger settings."""
 
     def __init__(self) -> None:
@@ -263,4 +300,151 @@ class SenorFungiOptionsFlow(OptionsFlowWithReload):
             ),
             errors=errors,
             description_placeholders={"devices": str(len(self._devices))},
+        )
+
+
+def _number(minimum: float, maximum: float, step: float, unit: str) -> NumberSelector:
+    return NumberSelector(
+        NumberSelectorConfig(min=minimum, max=maximum, step=step, mode=NumberSelectorMode.BOX, unit_of_measurement=unit)
+    )
+
+
+def _controller_schema(devices: list[EmsDevice]) -> probatio.Schema:
+    d = CONTROLLER_DEFAULTS
+    thermostat = SelectSelector(
+        SelectSelectorConfig(
+            options=_device_options(devices)[:-1], custom_value=True, mode=SelectSelectorMode.DROPDOWN, sort=False
+        )
+    )
+    return probatio.Schema(
+        {
+            probatio.Required(CONF_OUTDOOR_ENTITY): EntitySelector(
+                EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.TEMPERATURE)
+            ),
+            probatio.Optional(CONF_THERMOSTAT_ID): thermostat,
+            probatio.Required(CONF_PRESENCE_TIMEOUT, default=d[CONF_PRESENCE_TIMEOUT]): _number(60, 3600, 1, "s"),
+            probatio.Required(CONF_DESIGN_OUTDOOR, default=d[CONF_DESIGN_OUTDOOR]): _number(-30, 5, 0.5, "°C"),
+            probatio.Required(CONF_DESIGN_FLOW, default=d[CONF_DESIGN_FLOW]): _number(25, 90, 0.5, "°C"),
+            probatio.Required(CONF_MIN_FLOW, default=d[CONF_MIN_FLOW]): _number(20, 60, 0.5, "°C"),
+            probatio.Required(CONF_MAX_FLOW, default=d[CONF_MAX_FLOW]): _number(25, 90, 0.5, "°C"),
+            probatio.Required(CONF_ROOM_GAIN, default=d[CONF_ROOM_GAIN]): _number(0, 20, 0.5, "K/K"),
+            probatio.Required(CONF_SUMMER_LIMIT, default=d[CONF_SUMMER_LIMIT]): _number(5, 30, 0.5, "°C"),
+            probatio.Required(CONF_BOOST_OFFSET, default=d[CONF_BOOST_OFFSET]): _number(0, 30, 0.5, "K"),
+            probatio.Required(CONF_MIN_ON, default=d[CONF_MIN_ON]): _number(0, 60, 1, "min"),
+            probatio.Required(CONF_MIN_OFF, default=d[CONF_MIN_OFF]): _number(0, 60, 1, "min"),
+        }
+    )
+
+
+def _check_controller(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+    data = dict(user_input)
+    errors: dict[str, str] = {}
+    tid = normalize_hex(data.get(CONF_THERMOSTAT_ID, ""))
+    if tid is None:
+        errors[CONF_THERMOSTAT_ID] = "invalid_hex"
+    else:
+        data[CONF_THERMOSTAT_ID] = tid
+    if float(data[CONF_MIN_FLOW]) >= float(data[CONF_MAX_FLOW]):
+        errors[CONF_MAX_FLOW] = "max_below_min"
+    return data, errors
+
+
+class ControllerSubentryFlow(ConfigSubentryFlow):
+    """Add or change the heating controller (shadow mode: computes only, writes nothing)."""
+
+    async def _devices(self) -> list[EmsDevice]:
+        host = self._get_entry().options.get(CONF_EMS_HOST)
+        return await async_discover(self.hass, host) if host else []
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        """Add the controller."""
+        if self._get_entry().get_subentries_of_type(SUBENTRY_CONTROLLER):
+            return self.async_abort(reason="controller_exists")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data, errors = _check_controller(user_input)
+            if not errors:
+                return self.async_create_entry(title="Heating controller", data=data)
+        devices = await self._devices()
+        suggested = user_input or {CONF_THERMOSTAT_ID: next((d.dev_id for d in devices if d.type == "thermostat"), "")}
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(_controller_schema(devices), suggested),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        """Change the controller."""
+        subentry = self._get_reconfigure_subentry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data, errors = _check_controller(user_input)
+            if not errors:
+                return self.async_update_and_abort(self._get_entry(), subentry, data=data)
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                _controller_schema(await self._devices()), user_input or subentry.data
+            ),
+            errors=errors,
+        )
+
+
+def _zone_schema() -> probatio.Schema:
+    d = ZONE_DEFAULTS
+    return probatio.Schema(
+        {
+            probatio.Required(CONF_ZONE_NAME): TextSelector(),
+            probatio.Optional(CONF_ZONE_CLIMATE): EntitySelector(EntitySelectorConfig(domain="climate")),
+            probatio.Optional(CONF_ZONE_TEMPERATURE): EntitySelector(
+                EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.TEMPERATURE)
+            ),
+            probatio.Optional(CONF_ZONE_VALVE_ENTITY): EntitySelector(EntitySelectorConfig(domain="sensor")),
+            probatio.Required(CONF_ZONE_HAS_VALVE, default=d[CONF_ZONE_HAS_VALVE]): BooleanSelector(),
+            probatio.Required(CONF_ZONE_WEIGHT, default=d[CONF_ZONE_WEIGHT]): _number(0, 2, 0.1, "×"),
+            probatio.Required(CONF_ZONE_COMFORT, default=d[CONF_ZONE_COMFORT]): _number(5, 30, 0.5, "°C"),
+            probatio.Required(CONF_ZONE_ECO, default=d[CONF_ZONE_ECO]): _number(5, 30, 0.5, "°C"),
+        }
+    )
+
+
+def _check_zone(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+    data = {k: v for k, v in user_input.items() if v not in ("", None)}
+    data[CONF_ZONE_NAME] = str(data.get(CONF_ZONE_NAME, "")).strip()
+    errors: dict[str, str] = {}
+    if not data[CONF_ZONE_NAME]:
+        errors[CONF_ZONE_NAME] = "name_required"
+    if not data.get(CONF_ZONE_CLIMATE) and not data.get(CONF_ZONE_TEMPERATURE):
+        errors["base"] = "zone_needs_source"
+    return data, errors
+
+
+class ZoneSubentryFlow(ConfigSubentryFlow):
+    """Add or change a heating zone (room)."""
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        """Add a zone."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data, errors = _check_zone(user_input)
+            if not errors:
+                return self.async_create_entry(title=data[CONF_ZONE_NAME], data=data)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(_zone_schema(), user_input or {}),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        """Change a zone."""
+        subentry = self._get_reconfigure_subentry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data, errors = _check_zone(user_input)
+            if not errors:
+                return self.async_update_and_abort(self._get_entry(), subentry, title=data[CONF_ZONE_NAME], data=data)
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(_zone_schema(), user_input or subentry.data),
+            errors=errors,
         )
