@@ -26,14 +26,21 @@ _LOGGER = logging.getLogger(__name__)
 
 IAC, DONT, DO, WONT, WILL, SB, SE = 255, 254, 253, 252, 251, 250, 240
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
-# "<uptime> <level> <n>: [emsesp] <telegram>" anywhere in a (prompt-cluttered) line
-LOG_RE = re.compile(r"\d+\+\d\d:\d\d:\d\d\.\d{3} [A-Z] \d+: \[emsesp\] (.+)$")
-TELEGRAM_RE = re.compile(
-    r"^(?P<src_name>[^(]*)\((?P<src>0x[0-9A-Fa-f]+)\) -> "
-    r"(?P<dst_name>[^(]*)\((?P<dst>0x[0-9A-Fa-f]+)\), "
-    r"(?P<op>[A-Z]), "
-    r"(?P<type_name>[^(]*)\((?P<type>0x[0-9A-Fa-f]+)\), "
-    r"(?P<rest>.*)$"
+# "<time> <level> <n>: [emsesp] <telegram>" anywhere in a (prompt-cluttered) line.
+# <time> is the uptime ("299+02:03:31.502"), or from EMS-ESP 3.8 on the local
+# date and time once the clock is set ("2026-11-15T09:00:00.123").
+LOG_RE = re.compile(
+    r"(?:\d+\+\d\d:\d\d:\d\d|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)\.\d{3} "
+    r"[A-Z] \d+: \[emsesp\] (.+)$"
+)
+_SRC = r"(?P<src_name>[^(]*)\((?P<src>0x[0-9A-Fa-f]+)\)"
+_DST = r"(?P<dst_name>[^(]*)\((?P<dst>0x[0-9A-Fa-f]+)\)"
+_TYPE_REST = r"(?P<type_name>[^(]*)\((?P<type>0x[0-9A-Fa-f]+)\), (?P<rest>.*)$"
+TELEGRAM_RES = (
+    # up to EMS-ESP 3.7: "src(0x18) -> dst(0x08), W, type(0x02E0), data: .."
+    re.compile(rf"^{_SRC} -> {_DST}, (?P<op>[A-Z]), {_TYPE_REST}"),
+    # from EMS-ESP 3.8: "src(0x18) W dst(0x08), type(0x02E0), data: .."
+    re.compile(rf"^{_SRC} (?P<op>[A-Z]) {_DST}, {_TYPE_REST}"),
 )
 
 IDLE_TIMEOUT = 300  # s without any telegram -> reconnect
@@ -76,7 +83,7 @@ def parse_line(raw: str, now: datetime) -> Telegram | None:
     if not m:
         return None
     text = m.group(1)
-    t = TELEGRAM_RE.match(text)
+    t = next((r.match(text) for r in TELEGRAM_RES if r.match(text)), None)
     if not t:
         return None
     return Telegram(
@@ -89,7 +96,11 @@ def parse_line(raw: str, now: datetime) -> Telegram | None:
         src_name=t["src_name"],
         dst_name=t["dst_name"],
         rest=t["rest"],
-        line=text,
+        # one format for every EMS-ESP version, so log files stay comparable
+        line=(
+            f"{t['src_name']}({t['src']}) -> {t['dst_name']}({t['dst']}), {t['op']}, "
+            f"{t['type_name']}({t['type']}), {t['rest']}"
+        ),
     )
 
 

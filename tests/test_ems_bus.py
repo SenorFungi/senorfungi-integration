@@ -52,11 +52,43 @@ def test_parse_read_request_has_no_data() -> None:
     assert t.data == ""
 
 
+def test_parse_ems_esp_3_8_format() -> None:
+    """EMS-ESP 3.8+ prints the wall-clock time and the operation between src and dst."""
+    line = (
+        PROMPT
+        + "2026-11-15T09:00:45.507 N 26: [emsesp] thermostat(0x18) W boiler(0x08), ?(0x02E0), data: 01 28 64 00 01\r"
+    )
+    t = ems_bus.parse_line(line, NOW)
+    assert t is not None
+    assert (t.src, t.dst, t.op, t.type_id) == (0x18, 0x08, "W", 0x02E0)
+    assert t.data == "01 28 64 00 01"
+    # written in the same format as for older versions
+    assert t.line == "thermostat(0x18) -> boiler(0x08), W, ?(0x02E0), data: 01 28 64 00 01"
+
+
+def test_parse_ems_esp_3_8_broadcast_and_read() -> None:
+    b = ems_bus.parse_line(
+        "2026-11-15T09:00:45.507 N 27: [emsesp] boiler(0x08) B all(0x00), UBAMonitorFastPlus(0xE4), "
+        "data: 00 00 (offset 35)",
+        NOW,
+    )
+    assert b is not None
+    assert (b.src, b.dst, b.op, b.type_name) == (0x08, 0x00, "B", "UBAMonitorFastPlus")
+    assert b.data == "00 00"
+    r = ems_bus.parse_line(
+        "2026-11-15T09:00:46.001 N 28: [emsesp] me(0x0B) R thermostat(0x18), RC300Monitor(0x02A5), length: 25",
+        NOW,
+    )
+    assert r is not None
+    assert (r.src, r.op, r.data) == (0x0B, "R", "")
+
+
 def test_other_lines_are_ignored() -> None:
     for line in (
         "Watching incoming telegrams, displayed in decoded format",
         PROMPT,
         "299+02:03:05.436 I 0: [shell] User session opened on console pty0",
+        "2026-11-15T09:00:00.000 I 1: [shell] User session opened on console pty0",
         "",
     ):
         assert ems_bus.parse_line(line, NOW) is None
