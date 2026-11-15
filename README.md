@@ -13,7 +13,7 @@ A custom Home Assistant integration with a collection of small helpers. Features
 
 Logs the EMS bus traffic of a Bosch, Buderus or Junkers heating system that an [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway sees, to daily files in Home Assistant.
 
-- **How it works:** it keeps a session to the EMS-ESP telnet console (port 23) open and turns on `watch`. EMS-ESP then prints every received telegram, already decoded. The logger writes each one with a timestamp to a daily file `ems_bus-YYYY-MM-DD.log` in the log folder, compresses finished days with gzip and deletes old files. It reconnects after an EMS-ESP or Home Assistant restart and turns the watch on again.
+- **How it works:** it keeps a session to the EMS-ESP telnet console (port 23) open and turns on `watch`. EMS-ESP then prints every received telegram, already decoded. The logger writes each one with a timestamp to a daily file `ems_bus-YYYY-MM-DD.log` in the log folder, compresses finished days with gzip and deletes old files. It reconnects after an EMS-ESP or Home Assistant restart and turns the watch on again; TCP keepalive notices a dead console within about a minute.
 - **It only listens.** It sends nothing to the EMS bus. `watch` is a global, non-persistent EMS-ESP setting: the logger turns it off when it stops. While it runs, the watch output also appears in the EMS-ESP web log and in other telnet sessions, and `watch off` in another session stops it until the next reconnect.
 - **Setup:** Settings → Devices & services → SenorFungi → Configure. The options have two steps:
   1. **Connection:** turn the logger on and enter the EMS-ESP host and telnet port (default 23). Telnet must be enabled in EMS-ESP (Settings → Services, on by default). The step checks that the console can be reached.
@@ -40,7 +40,9 @@ Entities (device "EMS bus logger"):
 | Last telegram \<source\> to \<destination\> | Time of the last telegram from source to destination. The attributes hold the last payload per telegram type. |
 | Interval \<source\> to \<destination\> | Seconds between the last two telegrams of the same type from source to destination. Shows whether a device sends on a schedule. |
 
-Log line example: `2026-11-14T14:45:37.567+01:00 thermostat(0x18) -> boiler(0x08), W, ?(0x02E0), data: 01 00 00 00 01`. File size depends on the system and the filter. As a guide, one thermostat with EMS-ESP's polling was about 0.5 telegrams per second (5–7 MB per day), a whole bus about 1–2 per second. Gzip shrinks finished days by about 90 %.
+Log line example: `2026-11-14T14:45:37.567+01:00 thermostat(0x18) -> boiler(0x08), W, ?(0x02E0), data: 01 00 00 00 01`. File size depends on the system and the filter. As a guide, a whole bus of one boiler and one thermostat was about 13 MB per day, and under 1 MB gzipped.
+
+**Reference:** [docs/ems-bus-logger.md](docs/ems-bus-logger.md) has the timers and reconnect behaviour, the load on EMS-ESP, how to read the files, and the telegrams known so far (heat request `0x02E0`, the boiler's answer `0x02D6`, parameter ranges, and the types nobody has decoded yet).
 
 The EMS-ESP console's text format is not an official interface, so a new EMS-ESP version could change it. The logger reads the console formats of EMS-ESP 3.7 and 3.8 or later (decoded `watch` output and `/api/system/info`) and writes the same line format for both.
 

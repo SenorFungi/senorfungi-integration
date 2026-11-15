@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import socket
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -43,7 +44,12 @@ TELEGRAM_RES = (
     re.compile(rf"^{_SRC} (?P<op>[A-Z]) {_DST}, {_TYPE_REST}"),
 )
 
-IDLE_TIMEOUT = 300  # s without any telegram -> reconnect
+IDLE_TIMEOUT = 120  # s without any output -> reconnect (for example watch turned off elsewhere)
+# TCP keepalive notices a dead console (EMS-ESP restarted, network gone) within about
+# KEEPALIVE_IDLE + KEEPALIVE_INTERVAL * KEEPALIVE_COUNT seconds.
+KEEPALIVE_IDLE = 30
+KEEPALIVE_INTERVAL = 10
+KEEPALIVE_COUNT = 3
 RECONNECT_MIN = 10
 RECONNECT_MAX = 300
 
@@ -148,6 +154,25 @@ def strip_telnet(data: bytes) -> tuple[bytes, bytes]:
     return bytes(out), bytes(reply)
 
 
+def enable_keepalive(sock: socket.socket | None) -> None:
+    """Turn on TCP keepalive with short timers (best effort, per platform)."""
+    if sock is None:
+        return
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        # Linux: TCP_KEEPIDLE, macOS: TCP_KEEPALIVE (same meaning)
+        idle = getattr(socket, "TCP_KEEPIDLE", None) or getattr(socket, "TCP_KEEPALIVE", None)
+        for option, value in (
+            (idle, KEEPALIVE_IDLE),
+            (getattr(socket, "TCP_KEEPINTVL", None), KEEPALIVE_INTERVAL),
+            (getattr(socket, "TCP_KEEPCNT", None), KEEPALIVE_COUNT),
+        ):
+            if option is not None:
+                sock.setsockopt(socket.IPPROTO_TCP, option, value)
+    except OSError as err:
+        _LOGGER.debug("TCP keepalive not set: %s", err)
+
+
 class EmsBusClient:
     """Keep a telnet session to EMS-ESP open and stream watched telegrams."""
 
@@ -197,6 +222,7 @@ class EmsBusClient:
 
     async def _session(self) -> None:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(self.host, self.port), timeout=15)
+        enable_keepalive(writer.get_extra_info("socket"))
         self._writer = writer
         try:
             await self._send("")

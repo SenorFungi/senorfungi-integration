@@ -107,3 +107,21 @@ def test_watch_command() -> None:
 
     assert ems_bus.EmsBusClient("h", 23, "18", noop, noop, datetime.now).watch_command == "watch on 18"
     assert ems_bus.EmsBusClient("h", 23, "", noop, noop, datetime.now).watch_command == "watch on"
+
+
+def test_enable_keepalive_sets_socket_options() -> None:
+    import socket
+
+    class FakeSocket:
+        def __init__(self) -> None:
+            self.options: dict[tuple[int, int], int] = {}
+
+        def setsockopt(self, level: int, option: int, value: int) -> None:
+            self.options[(level, option)] = value
+
+    sock = FakeSocket()
+    ems_bus.enable_keepalive(sock)  # type: ignore[arg-type]
+    assert sock.options[(socket.SOL_SOCKET, socket.SO_KEEPALIVE)] == 1
+    if hasattr(socket, "TCP_KEEPINTVL"):
+        assert sock.options[(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL)] == ems_bus.KEEPALIVE_INTERVAL
+    ems_bus.enable_keepalive(None)
