@@ -18,7 +18,7 @@ from homeassistant.loader import async_get_integration
 
 from . import SenorFungiConfigEntry
 from .const import DOMAIN
-from .entity import EmsBusEntity, HeatingEntity
+from .entity import EmsBusEntity, EmsThermostatEntity, HeatingEntity
 from .heating_control import Reason
 
 
@@ -40,6 +40,8 @@ async def async_setup_entry(
                 EmsPairLastSensor(entry, ems, "pair_last"),
                 EmsPairIntervalSensor(entry, ems, "pair_interval"),
             ]
+        if ems.stats.thermostat is not None:
+            entities.append(EmsThermostatFlowSensor(entry, ems, "thermostat_flow"))
     async_add_entities(entities)
     if (heating := entry.runtime_data.heating) is not None:
         controller: list[SensorEntity] = [
@@ -136,6 +138,28 @@ class EmsPairIntervalSensor(_PairSensor):
     def native_value(self) -> float | None:
         """Return the interval."""
         return self.ems.stats.pair.last_interval
+
+
+class EmsThermostatFlowSensor(EmsThermostatEntity, SensorEntity):
+    """Flow temperature the bus thermostat last asked the boiler for. Unknown while it is absent."""
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the requested flow, None if absent or no request seen yet."""
+        req = self.ems.thermostat_request
+        return None if req is None else req.flow
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Burner output, time and type of the request."""
+        req = self.ems.thermostat_request
+        if req is None:
+            return {}
+        return {"output": req.output, "time": req.time.isoformat(), "telegram": f"0x{req.type_id:02X}"}
 
 
 class FlowTargetSensor(HeatingEntity, SensorEntity):

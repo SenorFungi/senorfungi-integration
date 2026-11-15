@@ -34,6 +34,28 @@ class EmsBusEntity(Entity):
         self.async_on_remove(self.ems.async_add_listener(self.async_write_ha_state))
 
 
+class EmsThermostatEntity(EmsBusEntity):
+    """Entity for the bus thermostat the logger follows (presence, heat request).
+
+    Updates only when presence or the request changes, not with the logger's statistics.
+    """
+
+    def __init__(self, entry: SenorFungiConfigEntry, ems: EmsBusLogger, key: str) -> None:
+        """Initialize the entity."""
+        super().__init__(entry, ems, key)
+        self.thermostat = ems.stats.thermostat
+        self._attr_translation_placeholders = {"id": f"0x{self.thermostat.dev_id:02X}"}
+
+    async def async_added_to_hass(self) -> None:
+        """Follow the thermostat's changes."""
+        self.async_on_remove(self.ems.async_add_thermostat_listener(self.async_write_ha_state))
+
+    @property
+    def available(self) -> bool:
+        """Unavailable while presence is unknown (console down, or not watched for a whole timeout yet)."""
+        return self.ems.thermostat_present is not None
+
+
 class HeatingEntity(Entity):
     """Entity of the heating controller (shadow mode)."""
 

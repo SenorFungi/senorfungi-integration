@@ -12,6 +12,8 @@ The [README](../README.md#ems-bus-logger) covers setup, options and entities. Th
 | Reconnect after an error | 10 s, doubling up to 5 min | `ems_bus.py` `RECONNECT_MIN`, `RECONNECT_MAX` |
 | Dead console (EMS-ESP restarted, network gone) | noticed by TCP keepalive after about 60 s (idle 30 s, 3 probes 10 s apart) | `ems_bus.py` `KEEPALIVE_*` |
 | No output at all (for example `watch off` typed in another session) | reconnect after 120 s | `ems_bus.py` `IDLE_TIMEOUT` |
+| Thermostat present | at once with its first telegram | `ems_logger.py` |
+| Thermostat absent | presence timeout after its last telegram (option, default 150 s); unavailable while disconnected and for one timeout after connecting | `ems_logger.py` |
 
 - On connect the logger sends an empty line, then `watch on <id>` (one filter ID) or `watch on` (several or none). It refuses every telnet option EMS-ESP offers.
 - On stop (options change, Home Assistant shutdown, removal) it sends `watch off` and `exit`. If Home Assistant is killed instead, `watch` stays on in EMS-ESP until EMS-ESP restarts or someone types `watch off`.

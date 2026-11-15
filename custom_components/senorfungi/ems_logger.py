@@ -12,10 +12,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_point_in_time, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
-from .ems_bus import EmsBusClient, Telegram
+from .ems_bus import EmsBusClient, Telegram, thermostat_request
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +37,26 @@ class PairStats:
 
 
 @dataclass(slots=True)
+class ThermostatRequest:
+    """The last heat request the bus thermostat sent to the boiler."""
+
+    time: datetime
+    flow: float
+    output: int
+    type_id: int
+
+
+@dataclass(slots=True)
+class ThermostatStats:
+    """Presence and heat request of one bus thermostat."""
+
+    dev_id: int
+    timeout: timedelta
+    seen: datetime | None = None  # last telegram from the thermostat
+    request: ThermostatRequest | None = None
+
+
+@dataclass(slots=True)
 class EmsBusStats:
     """Values the sensors show."""
 
@@ -45,6 +65,7 @@ class EmsBusStats:
     per_minute: float | None = None
     total: int = 0
     pair: PairStats | None = None
+    thermostat: ThermostatStats | None = None
 
 
 class EmsBusLogger:
@@ -61,6 +82,7 @@ class EmsBusLogger:
         retention_days: int,
         compress_after_days: int,
         pair: tuple[int, int] | None,
+        thermostat: tuple[int, timedelta] | None = None,
     ) -> None:
         """Initialize the logger.
 
@@ -68,7 +90,8 @@ class EmsBusLogger:
         With exactly one ID, EMS-ESP filters itself (`watch on <id>`), otherwise
         the whole bus is watched and filtered here. ignore_ids: drop telegrams
         from or to these devices. compress_after_days: gzip a day's file once it
-        is this many days old (0: never).
+        is this many days old (0: never). thermostat: device ID and presence
+        timeout of the bus thermostat to follow (presence and heat request).
         """
         self.hass = hass
         self.log_dir = log_dir
@@ -77,13 +100,55 @@ class EmsBusLogger:
         self.filter_ids = filter_ids
         self.ignore_ids = ignore_ids
         watch_id = f"{next(iter(filter_ids)):02x}" if len(filter_ids) == 1 else ""
-        self.stats = EmsBusStats(pair=PairStats(*pair) if pair else None)
+        self.stats = EmsBusStats(
+            pair=PairStats(*pair) if pair else None,
+            thermostat=ThermostatStats(*thermostat) if thermostat else None,
+        )
         self.client = EmsBusClient(host, port, watch_id, self._on_telegram, self._on_connection, dt_util.now)
         self._buffer: list[str] = []
         self._recent: deque[datetime] = deque()
         self._listeners: list[Callable[[], None]] = []
         self._telegram_listeners: list[Callable[[Telegram], None]] = []
+        self._thermostat_listeners: list[Callable[[], None]] = []
         self._unsubs: list[CALLBACK_TYPE] = []
+        self._now = dt_util.now  # replaceable in tests
+        self._watching_since: datetime | None = None  # connected and watching since
+        self._presence_check: CALLBACK_TYPE | None = None
+        self._last_present: bool | None = None
+
+    @property
+    def thermostat_present(self) -> bool | None:
+        """True if the thermostat sent a telegram within the timeout.
+
+        None (unknown) while the console isn't connected, and after connecting until
+        either a telegram from the thermostat arrives or a whole timeout has passed:
+        "no telegram" only means "absent" once the bus was watched that long.
+        """
+        th = self.stats.thermostat
+        if th is None or self._watching_since is None:
+            return None
+        now = self._now()
+        if th.seen is not None and now - th.seen <= th.timeout:
+            return True
+        if now - self._watching_since < th.timeout:
+            return None
+        return False
+
+    @property
+    def thermostat_request(self) -> ThermostatRequest | None:
+        """The thermostat's last heat request while it is present, else None."""
+        th = self.stats.thermostat
+        return th.request if th is not None and self.thermostat_present else None
+
+    @callback
+    def async_add_thermostat_listener(self, update: Callable[[], None]) -> CALLBACK_TYPE:
+        """Register a callback for changes of the thermostat's presence or request."""
+        self._thermostat_listeners.append(update)
+
+        def remove() -> None:
+            self._thermostat_listeners.remove(update)
+
+        return remove
 
     @callback
     def async_add_listener(self, update: Callable[[], None]) -> CALLBACK_TYPE:
@@ -119,12 +184,59 @@ class EmsBusLogger:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        self._cancel_presence_check()
         await self._flush()
 
     @callback
     def _on_connection(self, connected: bool) -> None:
         self.stats.connected = connected
+        self._watching_since = self._now() if connected else None
+        if self.stats.thermostat is not None:
+            if connected:
+                self._schedule_presence_check(self._watching_since + self.stats.thermostat.timeout)
+            else:
+                self._cancel_presence_check()
+            self._thermostat_changed()
         self._notify()
+
+    @callback
+    def _schedule_presence_check(self, when: datetime) -> None:
+        self._cancel_presence_check()
+        self._presence_check = async_track_point_in_time(
+            self.hass, self._presence_due, when + timedelta(milliseconds=100)
+        )
+
+    @callback
+    def _cancel_presence_check(self) -> None:
+        if self._presence_check is not None:
+            self._presence_check()
+            self._presence_check = None
+
+    @callback
+    def _presence_due(self, _now: datetime) -> None:
+        self._presence_check = None
+        self._thermostat_changed()
+
+    @callback
+    def _thermostat_changed(self, force: bool = False) -> None:
+        """Update the thermostat entities if presence changed (or always with force)."""
+        present = self.thermostat_present
+        if not force and present == self._last_present:
+            return
+        self._last_present = present
+        for update in list(self._thermostat_listeners):
+            update()
+
+    @callback
+    def _on_thermostat_telegram(self, telegram: Telegram, th: ThermostatStats) -> None:
+        th.seen = telegram.time
+        self._schedule_presence_check(telegram.time + th.timeout)
+        changed = False
+        if telegram.op == "W" and (req := thermostat_request(telegram.type_id, telegram.offset, telegram.data_bytes)):
+            old = th.request
+            th.request = ThermostatRequest(telegram.time, req[0], req[1], telegram.type_id)
+            changed = old is None or (old.flow, old.output) != (req[0], req[1])
+        self._thermostat_changed(force=changed)
 
     @callback
     def _on_telegram(self, telegram: Telegram) -> None:
@@ -141,6 +253,8 @@ class EmsBusLogger:
         self._buffer.append(f"{telegram.time.isoformat(timespec='milliseconds')} {telegram.line}\n")
         for on_telegram in list(self._telegram_listeners):
             on_telegram(telegram)
+        if (th := stats.thermostat) is not None and telegram.src == th.dev_id:
+            self._on_thermostat_telegram(telegram, th)
         pair = stats.pair
         if pair and telegram.src == pair.src and telegram.dst == pair.dst:
             prev = pair.last_by_type.get(telegram.type_id)

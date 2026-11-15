@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
@@ -20,9 +21,12 @@ from .const import (
     CONF_EMS_PAIR_DST,
     CONF_EMS_PAIR_SRC,
     CONF_EMS_PORT,
+    CONF_EMS_PRESENCE_TIMEOUT,
     CONF_EMS_RETENTION,
+    CONF_EMS_THERMOSTAT,
     DEFAULT_EMS_COMPRESS,
     DEFAULT_EMS_PORT,
+    DEFAULT_EMS_PRESENCE_TIMEOUT,
     DEFAULT_EMS_RETENTION,
     SUBENTRY_CONTROLLER,
     SUBENTRY_ZONE,
@@ -51,6 +55,13 @@ def _pair(options: dict) -> tuple[int, int] | None:
     return int(src, 16), int(dst, 16)
 
 
+def _thermostat(options: dict) -> tuple[int, timedelta] | None:
+    if not (dev_id := options.get(CONF_EMS_THERMOSTAT, "")):
+        return None
+    timeout = int(options.get(CONF_EMS_PRESENCE_TIMEOUT, DEFAULT_EMS_PRESENCE_TIMEOUT))
+    return int(dev_id, 16), timedelta(seconds=timeout)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: SenorFungiConfigEntry) -> bool:
     """Set up SenorFungi from a config entry."""
     data = SenorFungiData()
@@ -67,6 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SenorFungiConfigEntry) -
             retention_days=int(options.get(CONF_EMS_RETENTION, DEFAULT_EMS_RETENTION)),
             compress_after_days=int(options.get(CONF_EMS_COMPRESS, DEFAULT_EMS_COMPRESS)),
             pair=_pair(options),
+            thermostat=_thermostat(options),
         )
         data.ems = ems
         ems.async_start()

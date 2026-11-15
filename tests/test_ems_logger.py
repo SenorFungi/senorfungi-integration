@@ -340,3 +340,100 @@ async def test_compression_off(hass: HomeAssistant, socket_enabled, console: Fak
     assert hass.states.get("sensor.ems_bus_logger_interval_0x18_to_0x08") is None
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
+
+
+async def test_options_flow_thermostat(
+    hass: HomeAssistant, socket_enabled, console: FakeConsole, aioclient_mock, tmp_path
+) -> None:
+    aioclient_mock.get("http://127.0.0.1/api/system/info", json=INFO)
+    port = await console.start()
+    # set up before the thermostat option existed: the discovered thermostat is offered
+    old = _options(port, tmp_path)
+    entry = MockConfigEntry(domain=DOMAIN, title="SenorFungi", data={}, options=old)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {k: old[k] for k in CONNECTION_KEYS})
+    schema = result["data_schema"].schema
+    suggested = {str(k): k.description.get("suggested_value") for k in schema if k.description}
+    assert suggested["ems_thermostat_id"] == "18"
+    assert suggested["ems_filter_ids"] == ["18"]  # the existing options are kept
+    logger = {k: v for k, v in old.items() if k not in CONNECTION_KEYS}
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], logger | {"ems_thermostat_id": "0x10"}
+    )
+    assert result["errors"] == {"ems_thermostat_id": "thermostat_filtered"}  # filter is 0x18 only
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], logger | {"ems_thermostat_id": "0b", "ems_filter_ids": []}
+    )
+    assert result["errors"] == {"ems_thermostat_id": "thermostat_filtered"}  # 0x0B is ignored
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], logger | {"ems_thermostat_id": "0x18", "ems_presence_timeout": 90}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options["ems_thermostat_id"] == "18"
+    assert entry.options["ems_presence_timeout"] == 90
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+PRESENT = "binary_sensor.ems_bus_logger_thermostat_0x18_on_the_bus"
+REQUEST = "sensor.ems_bus_logger_flow_request_of_thermostat_0x18"
+
+
+async def test_thermostat_presence_and_request(
+    hass: HomeAssistant, socket_enabled, console: FakeConsole, tmp_path
+) -> None:
+    port = await console.start()
+    # 60 s: shorter than the client's idle timeout, which the time jump below also runs out
+    entry = await _setup(hass, _options(port, tmp_path, ems_thermostat_id="18", ems_presence_timeout=60))
+    ems = entry.runtime_data.ems
+    await _wait_for(lambda: ems.stats.total >= 3)
+    await hass.async_block_till_done()
+    # the first telegram makes it present at once; 0x02E0 "01 00 00 .." asks for nothing
+    assert hass.states.get(PRESENT).state == "on"
+    assert hass.states.get(PRESENT).attributes["thermostat_id"] == "0x18"
+    assert float(hass.states.get(REQUEST).state) == 0.0
+
+    await console.send(
+        b"299+02:04:31.502 N 40: [emsesp] thermostat(0x18) -> boiler(0x08), W, UBASetPoints(0x02E0), "
+        b"data: 01 28 64 00 01\r\n"
+    )
+    await _wait_for(lambda: ems.stats.total >= 4)
+    await hass.async_block_till_done()
+    request = hass.states.get(REQUEST)
+    assert float(request.state) == 40.0
+    assert request.attributes["output"] == 100
+    assert request.attributes["telegram"] == "0x2E0"
+
+    # silent for longer than the timeout: absent, and the old request is no longer shown
+    later = dt_util.now() + timedelta(seconds=61)
+    ems._now = lambda: later  # noqa: SLF001
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+    await hass.async_block_till_done()
+    assert hass.states.get(PRESENT).state == "off"
+    assert hass.states.get(REQUEST).state == "unknown"
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_thermostat_unknown_until_watched_for_a_timeout(
+    hass: HomeAssistant, socket_enabled, console: FakeConsole, tmp_path
+) -> None:
+    port = await console.start()
+    # 0x10 sends nothing: not "absent" right after connecting, only after a whole timeout
+    entry = await _setup(
+        hass, _options(port, tmp_path, ems_filter_ids=[], ems_thermostat_id="10", ems_presence_timeout=60)
+    )
+    ems = entry.runtime_data.ems
+    await _wait_for(lambda: ems.stats.connected)
+    await hass.async_block_till_done()
+    present = "binary_sensor.ems_bus_logger_thermostat_0x10_on_the_bus"
+    assert hass.states.get(present).state == "unavailable"
+    later = dt_util.now() + timedelta(seconds=61)
+    ems._now = lambda: later  # noqa: SLF001
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+    await hass.async_block_till_done()
+    assert hass.states.get(present).state == "off"
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()

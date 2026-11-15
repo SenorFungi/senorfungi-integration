@@ -17,7 +17,7 @@ Logs the EMS bus traffic of a Bosch, Buderus or Junkers heating system that an [
 - **It only listens.** It sends nothing to the EMS bus. `watch` is a global, non-persistent EMS-ESP setting: the logger turns it off when it stops. While it runs, the watch output also appears in the EMS-ESP web log and in other telnet sessions, and `watch off` in another session stops it until the next reconnect.
 - **Setup:** Settings → Devices & services → SenorFungi → Configure. The options have two steps:
   1. **Connection:** turn the logger on and enter the EMS-ESP host and telnet port (default 23). Telnet must be enabled in EMS-ESP (Settings → Services, on by default). The step checks that the console can be reached.
-  2. **What and where:** the logger asks EMS-ESP's REST API (`http://<host>/api/system/info`, no login) which devices it sees, and offers them in the ID fields, for example `0x08 boiler – …`. Any other hex ID can be typed in. If EMS-ESP reports a thermostat and a boiler, the pair is pre-filled with thermostat → boiler.
+  2. **What and where:** the logger asks EMS-ESP's REST API (`http://<host>/api/system/info`, no login) which devices it sees, and offers them in the ID fields, for example `0x08 boiler – …`. Any other hex ID can be typed in. If EMS-ESP reports a thermostat and a boiler, the pair is pre-filled with thermostat → boiler, and the thermostat field with the first thermostat.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -27,6 +27,8 @@ Logs the EMS bus traffic of a Bosch, Buderus or Junkers heating system that an [
 | Log folder | `/share/ems_bus` if `/share` exists (Home Assistant OS, Supervised), else `<config>/ems_bus` | Absolute path. A folder in `/share` isn't part of `/config` and can be left out of full backups. |
 | Keep log files | 90 days | Older files (also compressed ones) are deleted. |
 | Compress after | 1 day | Gzip a day's file once it is this many days old (1: yesterday's file). 0: never. Read with `zcat`/`zgrep`. |
+| Thermostat | from discovery, else empty | Adds a presence sensor and a flow request sensor for this bus thermostat. Its telegrams must pass the filter and ignore lists. Empty: none. |
+| Thermostat presence timeout | 150 s | Seconds without a telegram from the thermostat until it counts as absent. |
 
 Housekeeping (compress, delete) runs at start and every 6 hours.
 
@@ -39,6 +41,10 @@ Entities (device "EMS bus logger"):
 | Telegrams per minute | Mean over the last 5 minutes (diagnostic). |
 | Last telegram \<source\> to \<destination\> | Time of the last telegram from source to destination. The attributes hold the last payload per telegram type. |
 | Interval \<source\> to \<destination\> | Seconds between the last two telegrams of the same type from source to destination. Shows whether a device sends on a schedule. |
+| Thermostat \<id\> on the bus | On from the thermostat's first telegram, off once it has been silent for the presence timeout. **Unavailable** while that can't be known: the console isn't connected, or it hasn't been watched for a whole timeout yet (for example right after a restart). Attributes: `thermostat_id`, `last_seen`, `timeout`. |
+| Flow request of thermostat \<id\> | Flow temperature the thermostat last asked the boiler for (`UBASetPoints`, EMS+ `0x02E0` or EMS 1 `0x1A`; 0 = no heat). Unknown while the thermostat is absent. Attributes: `output` (maximum burner output %), `time`, `telegram`. |
+
+The two thermostat entities are meant as inputs for a heating controller that must step back while a thermostat controls the boiler: it should treat *unavailable* as *present*. They update when presence or the request changes, not every 30 s.
 
 Log line example: `2026-11-14T14:45:37.567+01:00 thermostat(0x18) -> boiler(0x08), W, ?(0x02E0), data: 01 00 00 00 01`. File size depends on the system and the filter. As a guide, a whole bus of one boiler and one thermostat was about 13 MB per day, and under 1 MB gzipped.
 
@@ -47,6 +53,8 @@ Log line example: `2026-11-14T14:45:37.567+01:00 thermostat(0x18) -> boiler(0x08
 The EMS-ESP console's text format is not an official interface, so a new EMS-ESP version could change it. The logger reads the console formats of EMS-ESP 3.7 and 3.8 or later (decoded `watch` output and `/api/system/info`) and writes the same line format for both.
 
 ## Heating controller (shadow mode)
+
+> The heating controller moves to its own integration, [senorfungi-heating-integration](https://github.com/SenorFungi/senorfungi-heating-integration), which reads the thermostat entities of the EMS bus logger above. A later release removes it from here.
 
 Computes the flow temperature a boiler should be asked for, from a heating curve and the demand of the rooms ("zones"). **For now it runs in shadow mode only: it computes and shows the value, and sends nothing to the boiler.** It is meant to be compared with the thermostat that controls the boiler today, before anything is switched over.
 

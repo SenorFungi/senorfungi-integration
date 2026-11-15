@@ -13,11 +13,14 @@ CONF_EMS_PAIR_DST = "ems_pair_dst"
 CONF_EMS_LOG_DIR = "ems_log_dir"
 CONF_EMS_RETENTION = "ems_retention_days"
 CONF_EMS_COMPRESS = "ems_compress_after_days"
+CONF_EMS_THERMOSTAT = "ems_thermostat_id"
+CONF_EMS_PRESENCE_TIMEOUT = "ems_presence_timeout"
 
 DEFAULT_EMS_PORT = 23  # EMS-ESP telnet console
 EMS_API_INFO = "http://{host}/api/system/info"  # EMS-ESP REST API, readable without login
 DEFAULT_EMS_RETENTION = 90
 DEFAULT_EMS_COMPRESS = 1
+DEFAULT_EMS_PRESENCE_TIMEOUT = 150  # s without a telegram from the thermostat -> absent
 SHARE_DIR = "/share"  # exists on Home Assistant OS and Supervised installs
 EMS_LOG_SUBDIR = "ems_bus"
 EMS_BROADCAST_ID = "00"

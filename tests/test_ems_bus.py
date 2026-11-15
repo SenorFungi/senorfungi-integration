@@ -125,3 +125,11 @@ def test_enable_keepalive_sets_socket_options() -> None:
     if hasattr(socket, "TCP_KEEPINTVL"):
         assert sock.options[(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL)] == ems_bus.KEEPALIVE_INTERVAL
     ems_bus.enable_keepalive(None)
+
+
+def test_thermostat_request_from_telegrams() -> None:
+    assert ems_bus.thermostat_request(0x02E0, 0, [0x01, 0x28, 0x64, 0x00, 0x01]) == (40.0, 100)
+    assert ems_bus.thermostat_request(0x02E0, 1, [0x22, 0x50]) == (34.0, 80)
+    assert ems_bus.thermostat_request(0x1A, 0, [0x2D, 0x64, 0x00]) == (45.0, 100)
+    assert ems_bus.thermostat_request(0x02E0, 3, [0x00]) is None
+    assert ems_bus.thermostat_request(0x02A5, 0, [0x00, 0x01]) is None

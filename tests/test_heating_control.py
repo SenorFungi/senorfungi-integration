@@ -91,11 +91,3 @@ def test_summer_frost_and_missing_values() -> None:
 def test_weight_scales_demand() -> None:
     d = hc.HeatingController().decide(5.0, [zone(20.0, weight=0.5)], T0)
     assert d.demand == 0.5
-
-
-def test_thermostat_request_from_telegrams() -> None:
-    assert hc.thermostat_request(0x02E0, 0, [0x01, 0x28, 0x64, 0x00, 0x01]) == (40.0, 100)
-    assert hc.thermostat_request(0x02E0, 1, [0x22, 0x50]) == (34.0, 80)
-    assert hc.thermostat_request(0x1A, 0, [0x2D, 0x64, 0x00]) == (45.0, 100)
-    assert hc.thermostat_request(0x02E0, 3, [0x00]) is None
-    assert hc.thermostat_request(0x02A5, 0, [0x00, 0x01]) is None

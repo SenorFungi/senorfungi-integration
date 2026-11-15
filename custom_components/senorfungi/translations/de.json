@@ -34,7 +34,9 @@
           "ems_pair_dst": "Paar: Empfänger",
           "ems_log_dir": "Log-Ordner",
           "ems_retention_days": "Logdateien aufbewahren",
-          "ems_compress_after_days": "Komprimieren nach"
+          "ems_compress_after_days": "Komprimieren nach",
+          "ems_thermostat_id": "Thermostat",
+          "ems_presence_timeout": "Anwesenheits-Timeout des Thermostats"
         },
         "data_description": {
           "ems_filter_ids": "Nur Telegramme von oder an diese Geräte behalten. Leer: der ganze Bus. Bei einer ID filtert EMS-ESP selbst, bei mehreren wird der ganze Bus beobachtet und hier gefiltert.",
@@ -43,7 +45,9 @@
           "ems_pair_dst": "Empfänger des Paars.",
           "ems_log_dir": "Absoluter Pfad; eine Datei pro Tag. Unter Home Assistant OS liegt ein Ordner in /share außerhalb von /config und kann von Backups ausgenommen werden.",
           "ems_retention_days": "Tage; ältere Dateien werden gelöscht.",
-          "ems_compress_after_days": "Die Datei eines Tages mit gzip packen, sobald sie so viele Tage alt ist (1 = die Datei von gestern). 0: nie."
+          "ems_compress_after_days": "Die Datei eines Tages mit gzip packen, sobald sie so viele Tage alt ist (1 = die Datei von gestern). 0: nie.",
+          "ems_thermostat_id": "Legt einen Anwesenheitssensor und einen Sensor für die Vorlaufanforderung dieses Bus-Thermostats an, zum Beispiel für einen Heizungsregler, der zurücktreten muss, solange das Thermostat am Bus ist. Leer lassen für keine.",
+          "ems_presence_timeout": "Sekunden ohne Telegramm vom Thermostat, bis es als abwesend gilt. Thermostate senden alle paar Sekunden bis einmal pro Minute."
         }
       }
     },
@@ -53,7 +57,8 @@
       "pair_incomplete": "Beide Paar-Geräte eingeben oder beide leer lassen.",
       "cannot_connect": "Die EMS-ESP-Konsole ist nicht erreichbar (Host und Telnet-Port prüfen, Telnet muss in EMS-ESP eingeschaltet sein).",
       "dir_not_absolute": "Einen absoluten Pfad eingeben.",
-      "dir_not_writable": "Dieser Ordner kann nicht angelegt oder beschrieben werden."
+      "dir_not_writable": "Dieser Ordner kann nicht angelegt oder beschrieben werden.",
+      "thermostat_filtered": "Der Filter oder die Ignorierliste verwirft die Telegramme dieses Geräts."
     }
   },
   "entity": {
@@ -66,6 +71,9 @@
       },
       "heating_thermostat_present": {
         "name": "Thermostat am Bus"
+      },
+      "ems_thermostat_present": {
+        "name": "Thermostat {id} am Bus"
       }
     },
     "sensor": {
@@ -104,6 +112,9 @@
       },
       "heating_thermostat_flow": {
         "name": "Vorlaufanforderung des Thermostats"
+      },
+      "ems_thermostat_flow": {
+        "name": "Vorlaufanforderung von Thermostat {id}"
       }
     },
     "climate": {

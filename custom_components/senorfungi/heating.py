@@ -44,9 +44,9 @@ from .const import (
     CONTROLLER_DEFAULTS,
     ZONE_DEFAULTS,
 )
-from .ems_bus import Telegram
+from .ems_bus import Telegram, thermostat_request
 from .ems_logger import EmsBusLogger
-from .heating_control import Decision, HeatingController, Params, ZoneInput, thermostat_request
+from .heating_control import Decision, HeatingController, Params, ZoneInput
 
 _LOGGER = logging.getLogger(__name__)
 

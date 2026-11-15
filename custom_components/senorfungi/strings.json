@@ -34,7 +34,9 @@
           "ems_pair_dst": "Pair: destination device",
           "ems_log_dir": "Log folder",
           "ems_retention_days": "Keep log files",
-          "ems_compress_after_days": "Compress after"
+          "ems_compress_after_days": "Compress after",
+          "ems_thermostat_id": "Thermostat",
+          "ems_presence_timeout": "Thermostat presence timeout"
         },
         "data_description": {
           "ems_filter_ids": "Keep only telegrams from or to these devices. Empty: the whole bus. With one ID EMS-ESP filters itself, with several the whole bus is watched and filtered here.",
@@ -43,7 +45,9 @@
           "ems_pair_dst": "Destination device of the pair.",
           "ems_log_dir": "Absolute path; one file per day. On Home Assistant OS, a folder in /share is outside /config and can be left out of backups.",
           "ems_retention_days": "Days; older files are deleted.",
-          "ems_compress_after_days": "Gzip a day's file once it is this many days old (1 = yesterday's file). 0: never."
+          "ems_compress_after_days": "Gzip a day's file once it is this many days old (1 = yesterday's file). 0: never.",
+          "ems_thermostat_id": "Creates a presence sensor and a flow request sensor for this bus thermostat, for example for a heating controller that must step back while the thermostat is on the bus. Leave empty for none.",
+          "ems_presence_timeout": "Seconds without a telegram from the thermostat until it counts as absent. Thermostats send every few seconds to a minute."
         }
       }
     },
@@ -53,7 +57,8 @@
       "pair_incomplete": "Enter both pair devices, or leave both empty.",
       "cannot_connect": "Cannot reach the EMS-ESP console (check host and telnet port; telnet must be enabled in EMS-ESP).",
       "dir_not_absolute": "Enter an absolute path.",
-      "dir_not_writable": "Cannot create or write to this folder."
+      "dir_not_writable": "Cannot create or write to this folder.",
+      "thermostat_filtered": "The filter or ignore list drops this device's telegrams."
     }
   },
   "entity": {
@@ -66,6 +71,9 @@
       },
       "heating_thermostat_present": {
         "name": "Thermostat on the bus"
+      },
+      "ems_thermostat_present": {
+        "name": "Thermostat {id} on the bus"
       }
     },
     "sensor": {
@@ -104,6 +112,9 @@
       },
       "heating_thermostat_flow": {
         "name": "Thermostat flow request"
+      },
+      "ems_thermostat_flow": {
+        "name": "Flow request of thermostat {id}"
       }
     },
     "climate": {

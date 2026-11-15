@@ -44,7 +44,9 @@ from .const import (
     CONF_EMS_PAIR_DST,
     CONF_EMS_PAIR_SRC,
     CONF_EMS_PORT,
+    CONF_EMS_PRESENCE_TIMEOUT,
     CONF_EMS_RETENTION,
+    CONF_EMS_THERMOSTAT,
     CONF_MAX_FLOW,
     CONF_MIN_FLOW,
     CONF_MIN_OFF,
@@ -65,6 +67,7 @@ from .const import (
     CONTROLLER_DEFAULTS,
     DEFAULT_EMS_COMPRESS,
     DEFAULT_EMS_PORT,
+    DEFAULT_EMS_PRESENCE_TIMEOUT,
     DEFAULT_EMS_RETENTION,
     DOMAIN,
     EMS_BROADCAST_ID,
@@ -84,6 +87,8 @@ LOGGER_KEYS = (
     CONF_EMS_LOG_DIR,
     CONF_EMS_RETENTION,
     CONF_EMS_COMPRESS,
+    CONF_EMS_THERMOSTAT,
+    CONF_EMS_PRESENCE_TIMEOUT,
 )
 
 CONNECTION_SCHEMA = probatio.Schema(
@@ -120,6 +125,9 @@ def _logger_schema(devices: list[EmsDevice], default_dir: str) -> probatio.Schem
     one_id = SelectSelector(
         SelectSelectorConfig(options=options, custom_value=True, mode=SelectSelectorMode.DROPDOWN, sort=False)
     )
+    device = SelectSelector(  # a real device, not broadcast
+        SelectSelectorConfig(options=options[:-1], custom_value=True, mode=SelectSelectorMode.DROPDOWN, sort=False)
+    )
 
     def days(minimum: int) -> NumberSelector:
         return NumberSelector(
@@ -136,6 +144,10 @@ def _logger_schema(devices: list[EmsDevice], default_dir: str) -> probatio.Schem
             probatio.Required(CONF_EMS_LOG_DIR, default=default_dir): str,
             probatio.Required(CONF_EMS_RETENTION, default=DEFAULT_EMS_RETENTION): days(1),
             probatio.Required(CONF_EMS_COMPRESS, default=DEFAULT_EMS_COMPRESS): days(0),
+            probatio.Optional(CONF_EMS_THERMOSTAT): device,
+            probatio.Required(CONF_EMS_PRESENCE_TIMEOUT, default=DEFAULT_EMS_PRESENCE_TIMEOUT): NumberSelector(
+                NumberSelectorConfig(min=30, max=3600, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="s")
+            ),
         }
     )
 
@@ -146,6 +158,11 @@ def _suggested_pair(devices: list[EmsDevice]) -> dict[str, str]:
     if "thermostat" in by_type and "boiler" in by_type:
         return {CONF_EMS_PAIR_SRC: by_type["thermostat"], CONF_EMS_PAIR_DST: by_type["boiler"]}
     return {}
+
+
+def _suggested_thermostat(devices: list[EmsDevice]) -> dict[str, str]:
+    """The first thermostat EMS-ESP reports."""
+    return next(({CONF_EMS_THERMOSTAT: d.dev_id} for d in devices if d.type == "thermostat"), {})
 
 
 async def _can_connect(host: str, port: int) -> bool:
@@ -279,6 +296,20 @@ class SenorFungiOptionsFlow(OptionsFlow):
                     user_input[key] = normalized
             if bool(user_input.get(CONF_EMS_PAIR_SRC)) != bool(user_input.get(CONF_EMS_PAIR_DST)):
                 errors[CONF_EMS_PAIR_DST] = "pair_incomplete"
+            thermostat = normalize_hex(user_input.get(CONF_EMS_THERMOSTAT, ""))
+            user_input[CONF_EMS_PRESENCE_TIMEOUT] = int(
+                user_input.get(CONF_EMS_PRESENCE_TIMEOUT, DEFAULT_EMS_PRESENCE_TIMEOUT)
+            )
+            if thermostat is None:
+                errors[CONF_EMS_THERMOSTAT] = "invalid_hex"
+            else:
+                user_input[CONF_EMS_THERMOSTAT] = thermostat
+                filtered = isinstance(user_input.get(CONF_EMS_FILTER), list) and user_input[CONF_EMS_FILTER]
+                ignored = (
+                    isinstance(user_input.get(CONF_EMS_IGNORE), list) and thermostat in user_input[CONF_EMS_IGNORE]
+                )
+                if thermostat and (ignored or (filtered and thermostat not in user_input[CONF_EMS_FILTER])):
+                    errors[CONF_EMS_THERMOSTAT] = "thermostat_filtered"
             if not user_input[CONF_EMS_LOG_DIR].startswith("/"):
                 errors[CONF_EMS_LOG_DIR] = "dir_not_absolute"
             elif not await self.hass.async_add_executor_job(_check_dir, user_input[CONF_EMS_LOG_DIR]):
@@ -290,9 +321,12 @@ class SenorFungiOptionsFlow(OptionsFlow):
         if user_input is not None:
             suggested = user_input
         elif any(key in current for key in LOGGER_KEYS):
-            suggested = current
+            # set up before the thermostat option existed: offer the discovered one
+            suggested = (
+                current if CONF_EMS_THERMOSTAT in current else {**_suggested_thermostat(self._devices), **current}
+            )
         else:
-            suggested = _suggested_pair(self._devices)
+            suggested = _suggested_pair(self._devices) | _suggested_thermostat(self._devices)
         return self.async_show_form(
             step_id="logger",
             data_schema=self.add_suggested_values_to_schema(

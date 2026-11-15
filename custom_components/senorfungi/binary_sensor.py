@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import SenorFungiConfigEntry
-from .entity import EmsBusEntity, HeatingEntity
+from .entity import EmsBusEntity, EmsThermostatEntity, HeatingEntity
 
 
 async def async_setup_entry(
@@ -21,12 +21,39 @@ async def async_setup_entry(
 ) -> None:
     """Set up the binary sensor platform."""
     if (ems := entry.runtime_data.ems) is not None:
-        async_add_entities([EmsBusConnectedSensor(entry, ems, "connected")])
+        entities: list[BinarySensorEntity] = [EmsBusConnectedSensor(entry, ems, "connected")]
+        if ems.stats.thermostat is not None:
+            entities.append(EmsThermostatPresentSensor(entry, ems, "thermostat_present"))
+        async_add_entities(entities)
     if (heating := entry.runtime_data.heating) is not None:
         entities: list[BinarySensorEntity] = [HeatRequestSensor(entry, heating, "heat_request")]
         if heating.watches_thermostat:
             entities.append(ThermostatPresentSensor(entry, heating, "thermostat_present"))
         async_add_entities(entities, config_subentry_id=heating.subentry_id)
+
+
+class EmsThermostatPresentSensor(EmsThermostatEntity, BinarySensorEntity):
+    """On from the thermostat's first telegram, off once it has been silent for the presence timeout.
+
+    Unavailable while that can't be known. A controller should treat unavailable as present.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.PRESENCE
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true while the thermostat is on the bus."""
+        return self.ems.thermostat_present
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | int | None]:
+        """Address, last telegram and timeout."""
+        th = self.thermostat
+        return {
+            "thermostat_id": f"0x{th.dev_id:02X}",
+            "last_seen": th.seen.isoformat() if th.seen else None,
+            "timeout": int(th.timeout.total_seconds()),
+        }
 
 
 class EmsBusConnectedSensor(EmsBusEntity, BinarySensorEntity):

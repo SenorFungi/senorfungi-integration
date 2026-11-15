@@ -170,18 +170,3 @@ class HeatingController:
                 return Decision(False, 0.0, Reason.MIN_OFF, zone=neediest.name, demand=demand, curve=curve)
             return on(Reason.HEATING)
         return Decision(False, 0.0, Reason.SATISFIED, zone=neediest.name, demand=demand, curve=curve)
-
-
-def thermostat_request(type_id: int, offset: int, data: list[int]) -> tuple[float, int] | None:
-    """Flow temperature and burner output a thermostat asks the boiler for.
-
-    EMS+ `UBASetPoints` 0x02E0 (byte 1 flow °C, byte 2 output %) or EMS 1
-    `UBASetPoints` 0x1A (byte 0 flow °C, byte 1 output %). None for other telegrams.
-    """
-    layout = {0x02E0: (1, 2), 0x1A: (0, 1)}.get(type_id)
-    if layout is None:
-        return None
-    flow_i, pow_i = (i - offset for i in layout)
-    if not 0 <= flow_i < len(data) or not 0 <= pow_i < len(data):
-        return None
-    return float(data[flow_i]), data[pow_i]
